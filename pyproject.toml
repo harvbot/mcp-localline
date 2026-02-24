@@ -1,0 +1,23 @@
+[project]
+name = "mcp-localline"
+version = "0.1.0"
+description = "Local Line MCP boundary for CFC"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "typer>=0.12.0"
+]
+
+[project.scripts]
+mcp-localline = "mcp_localline.cli:app"
+mcp-localline-server = "mcp_localline.server:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
