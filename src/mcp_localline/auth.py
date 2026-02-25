@@ -44,7 +44,7 @@ def _post_json(url: str, payload: dict) -> dict:
             return json.loads(resp.read().decode("utf-8", errors="ignore"))
     except HTTPError as e:
         text = e.read().decode("utf-8", errors="ignore") if e.fp else str(e)
-        raise RuntimeError(f"HTTP {e.code}: {text}")
+        raise RuntimeError(f"HTTP {e.code} @ {url}: {text}")
 
 
 def bootstrap_from_env(base_url: str) -> TokenPair:
@@ -88,6 +88,9 @@ def bootstrap_and_store(base_url: str, keychain_service: str) -> dict:
         _keychain_set(keychain_service, "refresh_token", pair.refresh)
     return {
         "ok": True,
+        "auth_base": base_url.rstrip("/"),
+        "token_url": f"{base_url.rstrip('/')}/token/",
+        "refresh_url": f"{base_url.rstrip('/')}/token/refresh/",
         "stored_refresh": bool(pair.refresh),
         "note": "Credentials were read from env only; no plaintext persisted in repo files.",
     }
@@ -99,7 +102,17 @@ def auth_status(base_url: str, keychain_service: str) -> dict:
         return {
             "ok": False,
             "status": "AUTH_FAILED",
+            "auth_base": base_url.rstrip("/"),
+            "token_url": f"{base_url.rstrip('/')}/token/",
+            "refresh_url": f"{base_url.rstrip('/')}/token/refresh/",
             "reason": source,
             "fix": "Run: LOCALLINE_USERNAME=... LOCALLINE_PASSWORD=... mcp-localline auth-bootstrap",
         }
-    return {"ok": True, "status": "AUTH_OK", "source": source}
+    return {
+        "ok": True,
+        "status": "AUTH_OK",
+        "auth_base": base_url.rstrip("/"),
+        "token_url": f"{base_url.rstrip('/')}/token/",
+        "refresh_url": f"{base_url.rstrip('/')}/token/refresh/",
+        "source": source,
+    }
