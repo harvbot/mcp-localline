@@ -52,7 +52,7 @@ def bootstrap_from_env(base_url: str) -> TokenPair:
     password = os.getenv("LOCALLINE_PASSWORD", "").strip()
     if not username or not password:
         raise RuntimeError("Missing LOCALLINE_USERNAME/LOCALLINE_PASSWORD env vars")
-    payload = _post_json(f"{base_url.rstrip('/')}/login/", {"username": username, "password": password})
+    payload = _post_json(f"{base_url.rstrip('/')}/token/", {"username": username, "password": password})
     access = str(payload.get("access") or "").strip()
     refresh = str(payload.get("refresh") or "").strip()
     if not access:
