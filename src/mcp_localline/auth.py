@@ -57,11 +57,45 @@ def _extract_refresh_from_set_cookie(set_cookies: list[str]) -> str:
         try:
             c.load(raw)
         except Exception:
-            continue
+            c = SimpleCookie()
         for name, morsel in c.items():
-            if name.lower() in candidate_names and morsel.value:
+            lname = name.lower()
+            if (lname in candidate_names or "refresh" in lname) and morsel.value:
                 return morsel.value.strip()
+
+        # fallback parser for non-standard cookie formatting
+        head = raw.split(";", 1)[0].strip()
+        if "=" in head:
+            n, v = head.split("=", 1)
+            lname = n.strip().lower()
+            if (lname in candidate_names or "refresh" in lname) and v.strip():
+                return v.strip()
     return ""
+
+
+def _cookie_names(set_cookies: list[str]) -> list[str]:
+    names: list[str] = []
+    for raw in set_cookies:
+        c = SimpleCookie()
+        try:
+            c.load(raw)
+        except Exception:
+            c = SimpleCookie()
+        if c:
+            names.extend(list(c.keys()))
+            continue
+        head = raw.split(";", 1)[0].strip()
+        if "=" in head:
+            n, _ = head.split("=", 1)
+            names.append(n.strip())
+    # stable de-dupe
+    out = []
+    seen = set()
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
 
 
 def bootstrap_from_env(base_url: str) -> TokenPair:
@@ -107,18 +141,31 @@ def get_access_token(base_url: str, keychain_service: str) -> tuple[Optional[str
 
 
 def bootstrap_and_store(base_url: str, keychain_service: str) -> dict:
-    pair = bootstrap_from_env(base_url)
-    if pair.refresh:
-        _keychain_set(keychain_service, "refresh_token", pair.refresh)
-    if pair.access:
-        _keychain_set(keychain_service, "access_token", pair.access)
+    username = os.getenv("LOCALLINE_USERNAME", "").strip()
+    password = os.getenv("LOCALLINE_PASSWORD", "").strip()
+    if not username or not password:
+        raise RuntimeError("Missing LOCALLINE_USERNAME/LOCALLINE_PASSWORD env vars")
+
+    payload, set_cookies = _post_json(f"{base_url.rstrip('/')}/token/", {"username": username, "password": password})
+    access = str(payload.get("access") or "").strip()
+    refresh = str(payload.get("refresh") or "").strip() or _extract_refresh_from_set_cookie(set_cookies)
+
+    if not access:
+        raise RuntimeError("Login succeeded but no access token returned")
+
+    if refresh:
+        _keychain_set(keychain_service, "refresh_token", refresh)
+    _keychain_set(keychain_service, "access_token", access)
+
     return {
         "ok": True,
         "auth_base": base_url.rstrip("/"),
         "token_url": f"{base_url.rstrip('/')}/token/",
         "refresh_url": f"{base_url.rstrip('/')}/token/refresh/",
-        "stored_refresh": bool(pair.refresh),
-        "stored_access": bool(pair.access),
+        "stored_refresh": bool(refresh),
+        "stored_access": True,
+        "set_cookie_count": len(set_cookies),
+        "set_cookie_names": _cookie_names(set_cookies),
         "note": "Credentials were read from env only; no plaintext persisted in repo files.",
     }
 
