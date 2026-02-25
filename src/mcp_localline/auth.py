@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
+from http.cookies import SimpleCookie
 from typing import Optional
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -36,15 +37,31 @@ def _keychain_set(service: str, account: str, value: str) -> None:
     )
 
 
-def _post_json(url: str, payload: dict) -> dict:
+def _post_json(url: str, payload: dict) -> tuple[dict, list[str]]:
     body = json.dumps(payload).encode("utf-8")
     req = Request(url=url, data=body, method="POST", headers={"Content-Type": "application/json", "Accept": "application/json"})
     try:
         with urlopen(req, timeout=45) as resp:
-            return json.loads(resp.read().decode("utf-8", errors="ignore"))
+            parsed = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            set_cookies = resp.headers.get_all("Set-Cookie") or []
+            return parsed, set_cookies
     except HTTPError as e:
         text = e.read().decode("utf-8", errors="ignore") if e.fp else str(e)
         raise RuntimeError(f"HTTP {e.code} @ {url}: {text}")
+
+
+def _extract_refresh_from_set_cookie(set_cookies: list[str]) -> str:
+    candidate_names = {"refresh", "refresh_token", "jwt_refresh_token", "ll_refresh", "token_refresh"}
+    for raw in set_cookies:
+        c = SimpleCookie()
+        try:
+            c.load(raw)
+        except Exception:
+            continue
+        for name, morsel in c.items():
+            if name.lower() in candidate_names and morsel.value:
+                return morsel.value.strip()
+    return ""
 
 
 def bootstrap_from_env(base_url: str) -> TokenPair:
@@ -52,16 +69,16 @@ def bootstrap_from_env(base_url: str) -> TokenPair:
     password = os.getenv("LOCALLINE_PASSWORD", "").strip()
     if not username or not password:
         raise RuntimeError("Missing LOCALLINE_USERNAME/LOCALLINE_PASSWORD env vars")
-    payload = _post_json(f"{base_url.rstrip('/')}/token/", {"username": username, "password": password})
+    payload, set_cookies = _post_json(f"{base_url.rstrip('/')}/token/", {"username": username, "password": password})
     access = str(payload.get("access") or "").strip()
-    refresh = str(payload.get("refresh") or "").strip()
+    refresh = str(payload.get("refresh") or "").strip() or _extract_refresh_from_set_cookie(set_cookies)
     if not access:
         raise RuntimeError("Login succeeded but no access token returned")
     return TokenPair(access=access, refresh=refresh)
 
 
 def refresh_access(base_url: str, refresh: str) -> TokenPair:
-    payload = _post_json(f"{base_url.rstrip('/')}/token/refresh/", {"refresh": refresh})
+    payload, _ = _post_json(f"{base_url.rstrip('/')}/token/refresh/", {"refresh": refresh})
     access = str(payload.get("access") or "").strip()
     refresh_out = str(payload.get("refresh") or refresh).strip()
     if not access:
