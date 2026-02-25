@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 
 from .auth import auth_status, bootstrap_and_store, get_access_token
-from .client import get_json, post_form
+from .client import get_json, post_form, post_json
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -17,6 +18,19 @@ def _cfg() -> tuple[str, str, str]:
     api = os.getenv("LOCAL_LINE_API_BASE", f"{site}/api/backoffice/v2").rstrip("/")
     keychain_service = os.getenv("LOCAL_LINE_KEYCHAIN_SERVICE", "mcp.localline")
     return site, api, keychain_service
+
+
+def _ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _default_picklist_name(date_str: str) -> str:
+    d = datetime.strptime(date_str, "%Y-%m-%d")
+    return f"{d.strftime('%A')}, {d.strftime('%b')} {_ordinal(d.day)} Deliveries"
 
 
 if FastMCP is not None:
@@ -36,12 +50,21 @@ if FastMCP is not None:
             return {"ok": False, "status": "AUTH_FAILED", "error": str(e)}
 
     @mcp.tool(name="picklists.create")
-    def tool_picklists_create(start_date: str, end_date: str) -> dict:
+    def tool_picklists_create(start_date: str, end_date: str, name: str = "") -> dict:
         _, api, svc = _cfg()
         token, source = get_access_token(api, svc)
         if not token:
             return {"ok": False, "status": "AUTH_FAILED", "fix": "Run auth.bootstrap with env creds"}
-        out = get_json(f"{api}/orders/create-vendor-picklists/", token, {"fulfillment_date_start": start_date, "fulfillment_date_end": end_date})
+        picklist_name = name.strip() or _default_picklist_name(end_date)
+        out = post_json(
+            f"{api}/orders/create-vendor-picklists/",
+            token,
+            {
+                "name": picklist_name,
+                "fulfillment_date_start": start_date,
+                "fulfillment_date_end": end_date,
+            },
+        )
         out["auth_source"] = source
         if not out.get("ok") and out.get("status_code") == 401:
             out["status"] = "AUTH_FAILED"

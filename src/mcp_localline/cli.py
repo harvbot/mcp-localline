@@ -2,12 +2,26 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 import typer
 
 from .auth import auth_status, bootstrap_and_store, get_access_token
-from .client import get_json, post_form
+from .client import get_json, post_form, post_json
 
 app = typer.Typer(help="Local Line MCP boundary CLI")
+
+
+def _ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _default_picklist_name(date_str: str) -> str:
+    d = datetime.strptime(date_str, "%Y-%m-%d")
+    return f"{d.strftime('%A')}, {d.strftime('%b')} {_ordinal(d.day)} Deliveries"
 
 
 def _cfg() -> tuple[str, str, str]:
@@ -34,13 +48,26 @@ def auth_bootstrap_cmd() -> None:
 
 
 @app.command("picklists-create")
-def picklists_create(start_date: str = typer.Option(...), end_date: str = typer.Option(...)) -> None:
+def picklists_create(
+    start_date: str = typer.Option(...),
+    end_date: str = typer.Option(...),
+    name: str = typer.Option("", help="Optional picklist batch name"),
+) -> None:
     _, api, svc = _cfg()
     token, source = get_access_token(api, svc)
     if not token:
         print(json.dumps({"ok": False, "status": "AUTH_FAILED", "fix": "Run mcp-localline auth-bootstrap with LOCALLINE_USERNAME/PASSWORD env vars"}, indent=2))
         raise typer.Exit(code=2)
-    out = get_json(f"{api}/orders/create-vendor-picklists/", token, {"fulfillment_date_start": start_date, "fulfillment_date_end": end_date})
+    picklist_name = name.strip() or _default_picklist_name(end_date)
+    out = post_json(
+        f"{api}/orders/create-vendor-picklists/",
+        token,
+        {
+            "name": picklist_name,
+            "fulfillment_date_start": start_date,
+            "fulfillment_date_end": end_date,
+        },
+    )
     out["auth_source"] = source
     if not out.get("ok") and out.get("status_code") == 401:
         out["status"] = "AUTH_FAILED"
