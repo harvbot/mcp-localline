@@ -11,7 +11,7 @@ app = typer.Typer(help="Local Line MCP boundary CLI")
 
 
 def _cfg() -> tuple[str, str, str]:
-    site = os.getenv("LOCAL_LINE_BASE_URL", "https://cfc.localline.ca").rstrip("/")
+    site = os.getenv("LOCAL_LINE_BASE_URL", "https://localline.ca").rstrip("/")
     api = os.getenv("LOCAL_LINE_API_BASE", f"{site}/api/backoffice/v2").rstrip("/")
     keychain_service = os.getenv("LOCAL_LINE_KEYCHAIN_SERVICE", "mcp.localline")
     return site, api, keychain_service
