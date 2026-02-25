@@ -77,6 +77,7 @@ def picklists_create(
     start_date: str = typer.Option(...),
     end_date: str = typer.Option(...),
     name: str = typer.Option("", help="Optional picklist batch name"),
+    note: str = typer.Option("", help="Optional hub note"),
 ) -> None:
     _, api, svc = _cfg()
     token, source = get_access_token(api, svc)
@@ -90,7 +91,7 @@ def picklists_create(
         token,
         {
             "name": picklist_name,
-            "hub_note": None,
+            "hub_note": (note.strip() or None),
             "send_to_all": True,
             "vendor_ids": vendor_ids,
             "copy_on_emails": False,

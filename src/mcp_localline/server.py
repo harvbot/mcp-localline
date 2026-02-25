@@ -74,7 +74,7 @@ if FastMCP is not None:
             return {"ok": False, "status": "AUTH_FAILED", "error": str(e)}
 
     @mcp.tool(name="picklists.create")
-    def tool_picklists_create(start_date: str, end_date: str, name: str = "") -> dict:
+    def tool_picklists_create(start_date: str, end_date: str, name: str = "", note: str = "") -> dict:
         _, api, svc = _cfg()
         token, source = get_access_token(api, svc)
         if not token:
@@ -86,7 +86,7 @@ if FastMCP is not None:
             token,
             {
                 "name": picklist_name,
-                "hub_note": None,
+                "hub_note": (note.strip() or None),
                 "send_to_all": True,
                 "vendor_ids": vendor_ids,
                 "copy_on_emails": False,
