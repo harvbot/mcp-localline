@@ -127,11 +127,15 @@ def get_access_token(base_url: str, keychain_service: str) -> tuple[Optional[str
 
     refresh = _keychain_get(keychain_service, "refresh_token")
     if refresh:
-        pair = refresh_access(base_url, refresh)
-        _keychain_set(keychain_service, "refresh_token", pair.refresh)
-        if pair.access:
-            _keychain_set(keychain_service, "access_token", pair.access)
-        return pair.access, "keychain:refresh"
+        try:
+            pair = refresh_access(base_url, refresh)
+            _keychain_set(keychain_service, "refresh_token", pair.refresh)
+            if pair.access:
+                _keychain_set(keychain_service, "access_token", pair.access)
+            return pair.access, "keychain:refresh"
+        except Exception:
+            # If refresh token is stale/malformed, fall back to any cached access token.
+            pass
 
     access = _keychain_get(keychain_service, "access_token")
     if access:
