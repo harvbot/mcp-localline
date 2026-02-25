@@ -50,7 +50,7 @@ def _managed_vendor_ids(api: str, token: str) -> list[int]:
 
 
 def _cfg() -> tuple[str, str, str]:
-    site = os.getenv("LOCAL_LINE_BASE_URL", "https://localline.ca").rstrip("/")
+    site = os.getenv("LOCAL_LINE_BASE_URL", "https://cfc.localline.ca").rstrip("/")
     api = os.getenv("LOCAL_LINE_API_BASE", f"{site}/api/backoffice/v2").rstrip("/")
     keychain_service = os.getenv("LOCAL_LINE_KEYCHAIN_SERVICE", "mcp.localline")
     return site, api, keychain_service
@@ -90,9 +90,15 @@ def picklists_create(
         token,
         {
             "name": picklist_name,
+            "hub_note": None,
+            "send_to_all": True,
             "vendor_ids": vendor_ids,
+            "copy_on_emails": False,
+        },
+        params={
             "fulfillment_date_start": start_date,
             "fulfillment_date_end": end_date,
+            "status": ["OPEN", "NEEDS_APPROVAL", "CANCELLED", "CLOSED"],
         },
     )
     out["vendor_ids_count"] = len(vendor_ids)

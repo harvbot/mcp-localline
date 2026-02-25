@@ -21,7 +21,9 @@ def get_json(url: str, token: str | None = None, params: dict | None = None) -> 
         return {"status_code": e.code, "ok": False, "url": url, "error": txt}
 
 
-def post_json(url: str, token: str | None, payload: dict) -> dict:
+def post_json(url: str, token: str | None, payload: dict, params: dict | None = None) -> dict:
+    if params:
+        url = f"{url}?{urlencode(params, doseq=True)}"
     body = json.dumps(payload).encode("utf-8")
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     if token:
