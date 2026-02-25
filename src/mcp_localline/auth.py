@@ -75,23 +75,33 @@ def get_access_token(base_url: str, keychain_service: str) -> tuple[Optional[str
         return direct, "env:LOCALLINE_API_TOKEN"
 
     refresh = _keychain_get(keychain_service, "refresh_token")
-    if not refresh:
-        return None, "missing_refresh_token"
-    pair = refresh_access(base_url, refresh)
-    _keychain_set(keychain_service, "refresh_token", pair.refresh)
-    return pair.access, "keychain:refresh"
+    if refresh:
+        pair = refresh_access(base_url, refresh)
+        _keychain_set(keychain_service, "refresh_token", pair.refresh)
+        if pair.access:
+            _keychain_set(keychain_service, "access_token", pair.access)
+        return pair.access, "keychain:refresh"
+
+    access = _keychain_get(keychain_service, "access_token")
+    if access:
+        return access, "keychain:access"
+
+    return None, "missing_refresh_token"
 
 
 def bootstrap_and_store(base_url: str, keychain_service: str) -> dict:
     pair = bootstrap_from_env(base_url)
     if pair.refresh:
         _keychain_set(keychain_service, "refresh_token", pair.refresh)
+    if pair.access:
+        _keychain_set(keychain_service, "access_token", pair.access)
     return {
         "ok": True,
         "auth_base": base_url.rstrip("/"),
         "token_url": f"{base_url.rstrip('/')}/token/",
         "refresh_url": f"{base_url.rstrip('/')}/token/refresh/",
         "stored_refresh": bool(pair.refresh),
+        "stored_access": bool(pair.access),
         "note": "Credentials were read from env only; no plaintext persisted in repo files.",
     }
 
