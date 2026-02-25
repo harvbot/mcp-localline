@@ -37,9 +37,12 @@ def _keychain_set(service: str, account: str, value: str) -> None:
     )
 
 
-def _post_json(url: str, payload: dict) -> tuple[dict, list[str]]:
+def _post_json(url: str, payload: dict, headers: Optional[dict[str, str]] = None) -> tuple[dict, list[str]]:
     body = json.dumps(payload).encode("utf-8")
-    req = Request(url=url, data=body, method="POST", headers={"Content-Type": "application/json", "Accept": "application/json"})
+    req_headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if headers:
+        req_headers.update(headers)
+    req = Request(url=url, data=body, method="POST", headers=req_headers)
     try:
         with urlopen(req, timeout=45) as resp:
             parsed = json.loads(resp.read().decode("utf-8", errors="ignore"))
@@ -112,7 +115,9 @@ def bootstrap_from_env(base_url: str) -> TokenPair:
 
 
 def refresh_access(base_url: str, refresh: str) -> TokenPair:
-    payload, _ = _post_json(f"{base_url.rstrip('/')}/token/refresh/", {"refresh": refresh})
+    url = f"{base_url.rstrip('/')}/token/refresh/"
+    # Local Line expects refresh as Cookie header (backoffice_refresh_token=...)
+    payload, _ = _post_json(url, {}, headers={"Cookie": f"backoffice_refresh_token={refresh}"})
     access = str(payload.get("access") or "").strip()
     refresh_out = str(payload.get("refresh") or refresh).strip()
     if not access:
