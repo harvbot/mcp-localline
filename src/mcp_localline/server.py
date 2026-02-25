@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from .auth import auth_status, bootstrap_and_store, get_access_token
 from .client import get_json, post_form, post_json
@@ -31,6 +32,14 @@ def _ordinal(n: int) -> str:
 def _default_picklist_name(date_str: str) -> str:
     d = datetime.strptime(date_str, "%Y-%m-%d")
     return f"{d.strftime('%A')}, {d.strftime('%b')} {_ordinal(d.day)} Deliveries"
+
+
+def _current_week_window() -> tuple[str, str]:
+    today = datetime.now(ZoneInfo("America/Toronto")).date()
+    offset_to_thu = (3 - today.weekday()) % 7
+    thu = today + timedelta(days=offset_to_thu)
+    fri = thu - timedelta(days=6)
+    return fri.isoformat(), thu.isoformat()
 
 
 def _managed_vendor_ids(api: str, token: str) -> list[int]:
@@ -74,7 +83,20 @@ if FastMCP is not None:
             return {"ok": False, "status": "AUTH_FAILED", "error": str(e)}
 
     @mcp.tool(name="picklists.create")
-    def tool_picklists_create(start_date: str, end_date: str, name: str = "", note: str = "") -> dict:
+    def tool_picklists_create(start_date: str, end_date: str, name: str = "", note: str = "", allow_outside_current_week: bool = False) -> dict:
+        if not allow_outside_current_week:
+            exp_start, exp_end = _current_week_window()
+            if start_date != exp_start or end_date != exp_end:
+                return {
+                    "ok": False,
+                    "status": "GUARD_BLOCKED",
+                    "expected_start_date": exp_start,
+                    "expected_end_date": exp_end,
+                    "provided_start_date": start_date,
+                    "provided_end_date": end_date,
+                    "fix": "Use the expected current-week range or pass allow_outside_current_week=true intentionally.",
+                }
+
         _, api, svc = _cfg()
         token, source = get_access_token(api, svc)
         if not token:

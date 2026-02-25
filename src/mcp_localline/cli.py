@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import typer
 
 from .auth import auth_status, bootstrap_and_store, get_access_token
@@ -22,6 +23,27 @@ def _ordinal(n: int) -> str:
 def _default_picklist_name(date_str: str) -> str:
     d = datetime.strptime(date_str, "%Y-%m-%d")
     return f"{d.strftime('%A')}, {d.strftime('%b')} {_ordinal(d.day)} Deliveries"
+
+
+def _current_week_window() -> tuple[str, str]:
+    # Current fulfillment week window: Friday..Thursday in America/Toronto.
+    today = datetime.now(ZoneInfo("America/Toronto")).date()
+    # Find Thursday in the current week bucket.
+    offset_to_thu = (3 - today.weekday()) % 7
+    thu = today + timedelta(days=offset_to_thu)
+    fri = thu - timedelta(days=6)
+    return fri.isoformat(), thu.isoformat()
+
+
+def _guard_current_week(start_date: str, end_date: str, enforce: bool) -> None:
+    if not enforce:
+        return
+    exp_start, exp_end = _current_week_window()
+    if start_date != exp_start or end_date != exp_end:
+        raise typer.BadParameter(
+            f"Guard blocked run: expected current-week range {exp_start}..{exp_end}, got {start_date}..{end_date}. "
+            "Use --allow-outside-current-week to override intentionally."
+        )
 
 
 def _managed_vendor_ids(api: str, token: str) -> list[int]:
@@ -78,7 +100,10 @@ def picklists_create(
     end_date: str = typer.Option(...),
     name: str = typer.Option("", help="Optional picklist batch name"),
     note: str = typer.Option("", help="Optional hub note"),
+    allow_outside_current_week: bool = typer.Option(False, help="Override current-week date guard"),
 ) -> None:
+    _guard_current_week(start_date, end_date, enforce=not allow_outside_current_week)
+
     _, api, svc = _cfg()
     token, source = get_access_token(api, svc)
     if not token:
