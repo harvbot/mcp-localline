@@ -33,6 +33,30 @@ def _default_picklist_name(date_str: str) -> str:
     return f"{d.strftime('%A')}, {d.strftime('%b')} {_ordinal(d.day)} Deliveries"
 
 
+def _managed_vendor_ids(api: str, token: str) -> list[int]:
+    out = get_json(f"{api}/vendors/", token, {"page_size": 500})
+    if not out.get("ok"):
+        return []
+    data = out.get("data")
+    if isinstance(data, dict):
+        items = data.get("results") if isinstance(data.get("results"), list) else []
+    elif isinstance(data, list):
+        items = data
+    else:
+        items = []
+
+    vendor_ids: list[int] = []
+    for v in items:
+        if not isinstance(v, dict):
+            continue
+        if v.get("connected") is True:
+            continue
+        vid = v.get("id")
+        if isinstance(vid, int):
+            vendor_ids.append(vid)
+    return vendor_ids
+
+
 if FastMCP is not None:
     mcp = FastMCP("localline")
 
@@ -56,15 +80,18 @@ if FastMCP is not None:
         if not token:
             return {"ok": False, "status": "AUTH_FAILED", "fix": "Run auth.bootstrap with env creds"}
         picklist_name = name.strip() or _default_picklist_name(end_date)
+        vendor_ids = _managed_vendor_ids(api, token)
         out = post_json(
             f"{api}/orders/create-vendor-picklists/",
             token,
             {
                 "name": picklist_name,
+                "vendor_ids": vendor_ids,
                 "fulfillment_date_start": start_date,
                 "fulfillment_date_end": end_date,
             },
         )
+        out["vendor_ids_count"] = len(vendor_ids)
         out["auth_source"] = source
         if not out.get("ok") and out.get("status_code") == 401:
             out["status"] = "AUTH_FAILED"
