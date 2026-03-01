@@ -170,5 +170,71 @@ def customers_email_send_all(subject: str = typer.Option(...), body: str = typer
     print(json.dumps(out, indent=2))
 
 
+@app.command("emails-list")
+def emails_list(page_size: int = typer.Option(100), query: str = typer.Option("")) -> None:
+    _, api, svc = _cfg()
+    token, source = get_access_token(api, svc)
+    if not token:
+        print(json.dumps({"ok": False, "status": "AUTH_FAILED"}, indent=2))
+        raise typer.Exit(code=2)
+    params = {"page_size": page_size}
+    if query.strip():
+        params["q"] = query.strip()
+    out = get_json(f"{api}/emails/", token, params)
+    out["auth_source"] = source
+    print(json.dumps(out, indent=2))
+
+
+@app.command("emails-verify-subject")
+def emails_verify_subject(
+    subject: str = typer.Option(..., help="Subject text to match"),
+    customer_id: str = typer.Option("", help="Optional recipient/customer id filter"),
+    page_size: int = typer.Option(200),
+) -> None:
+    _, api, svc = _cfg()
+    token, source = get_access_token(api, svc)
+    if not token:
+        print(json.dumps({"ok": False, "status": "AUTH_FAILED"}, indent=2))
+        raise typer.Exit(code=2)
+
+    out = get_json(f"{api}/emails/", token, {"page_size": page_size})
+    out["auth_source"] = source
+    if not out.get("ok"):
+        print(json.dumps(out, indent=2))
+        return
+
+    data = out.get("data")
+    if isinstance(data, dict):
+        items = data.get("results") if isinstance(data.get("results"), list) else []
+    elif isinstance(data, list):
+        items = data
+    else:
+        items = []
+
+    subj = subject.strip().lower()
+    cid = customer_id.strip()
+    matches = []
+    for e in items:
+        if not isinstance(e, dict):
+            continue
+        e_subj = str(e.get("subject", "")).lower()
+        if subj not in e_subj:
+            continue
+        if cid:
+            joined = json.dumps(e, ensure_ascii=False)
+            if cid not in joined:
+                continue
+        matches.append(e)
+
+    print(json.dumps({
+        "ok": True,
+        "subject_query": subject,
+        "customer_id": cid or None,
+        "match_count": len(matches),
+        "matches": matches[:25],
+        "auth_source": source,
+    }, indent=2))
+
+
 if __name__ == "__main__":
     app()

@@ -156,6 +156,64 @@ if FastMCP is not None:
         return out
 
 
+    @mcp.tool(name="emails.list")
+    def tool_emails_list(page_size: int = 100, query: str = "") -> dict:
+        _, api, svc = _cfg()
+        token, source = get_access_token(api, svc)
+        if not token:
+            return {"ok": False, "status": "AUTH_FAILED"}
+        params = {"page_size": page_size}
+        if query.strip():
+            params["q"] = query.strip()
+        out = get_json(f"{api}/emails/", token, params)
+        out["auth_source"] = source
+        return out
+
+    @mcp.tool(name="emails.verify_subject")
+    def tool_emails_verify_subject(subject: str, customer_id: str = "", page_size: int = 200) -> dict:
+        _, api, svc = _cfg()
+        token, source = get_access_token(api, svc)
+        if not token:
+            return {"ok": False, "status": "AUTH_FAILED"}
+
+        out = get_json(f"{api}/emails/", token, {"page_size": page_size})
+        out["auth_source"] = source
+        if not out.get("ok"):
+            return out
+
+        data = out.get("data")
+        if isinstance(data, dict):
+            items = data.get("results") if isinstance(data.get("results"), list) else []
+        elif isinstance(data, list):
+            items = data
+        else:
+            items = []
+
+        subj = subject.strip().lower()
+        cid = customer_id.strip()
+        matches = []
+        for e in items:
+            if not isinstance(e, dict):
+                continue
+            e_subj = str(e.get("subject", "")).lower()
+            if subj not in e_subj:
+                continue
+            if cid:
+                import json as _json
+                if cid not in _json.dumps(e, ensure_ascii=False):
+                    continue
+            matches.append(e)
+
+        return {
+            "ok": True,
+            "subject_query": subject,
+            "customer_id": cid or None,
+            "match_count": len(matches),
+            "matches": matches[:25],
+            "auth_source": source,
+        }
+
+
 def main() -> None:
     if FastMCP is None:
         raise RuntimeError(f"mcp package not installed: {_IMPORT_ERROR}")
