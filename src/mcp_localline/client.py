@@ -4,6 +4,7 @@ import json
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 
 def get_json(url: str, token: str | None = None, params: dict | None = None) -> dict:
@@ -40,8 +41,25 @@ def post_json(url: str, token: str | None, payload: dict, params: dict | None = 
 
 
 def post_form(url: str, token: str | None, fields: dict) -> dict:
-    body = urlencode(fields).encode("utf-8")
-    headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
+    """Send multipart/form-data payload.
+
+    Local Line customers/email endpoints reject application/x-www-form-urlencoded
+    and require multipart/form-data.
+    """
+    boundary = f"----mcp-localline-{uuid4().hex}"
+    body_parts: list[bytes] = []
+    for key, value in fields.items():
+        body_parts.append(f"--{boundary}\r\n".encode("utf-8"))
+        body_parts.append(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8"))
+        body_parts.append(str(value).encode("utf-8"))
+        body_parts.append(b"\r\n")
+    body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    body = b"".join(body_parts)
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = Request(url=url, data=body, method="POST", headers=headers)
