@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from .auth import auth_status, bootstrap_and_store, get_access_token
 from .client import get_json, post_form, post_json
+from . import storefront
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -14,7 +15,7 @@ except Exception as e:  # pragma: no cover
     _IMPORT_ERROR = e
 
 
-def _cfg() -> tuple[str, str, str]:
+def _backoffice_cfg() -> tuple[str, str, str]:
     site = os.getenv("LOCAL_LINE_BASE_URL", "https://cfc.localline.ca").rstrip("/")
     api = os.getenv("LOCAL_LINE_API_BASE", f"{site}/api/backoffice/v2").rstrip("/")
     keychain_service = os.getenv("LOCAL_LINE_KEYCHAIN_SERVICE", "mcp.localline")
@@ -71,12 +72,12 @@ if FastMCP is not None:
 
     @mcp.tool(name="auth.status")
     def tool_auth_status() -> dict:
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         return auth_status(api, svc)
 
     @mcp.tool(name="auth.bootstrap")
     def tool_auth_bootstrap() -> dict:
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         try:
             return bootstrap_and_store(api, svc)
         except Exception as e:
@@ -97,7 +98,7 @@ if FastMCP is not None:
                     "fix": "Use the expected current-week range or pass allow_outside_current_week=true intentionally.",
                 }
 
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         token, source = get_access_token(api, svc)
         if not token:
             return {"ok": False, "status": "AUTH_FAILED", "fix": "Run auth.bootstrap with env creds"}
@@ -127,7 +128,7 @@ if FastMCP is not None:
 
     @mcp.tool(name="orders.export")
     def tool_orders_export(start_date: str, end_date: str) -> dict:
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         token, source = get_access_token(api, svc)
         if not token:
             return {"ok": False, "status": "AUTH_FAILED", "fix": "Run auth.bootstrap with env creds"}
@@ -137,7 +138,7 @@ if FastMCP is not None:
 
     @mcp.tool(name="customers.email.proof")
     def tool_customers_email_proof(subject: str, body: str, customer_id: str = "744150") -> dict:
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         token, source = get_access_token(api, svc)
         if not token:
             return {"ok": False, "status": "AUTH_FAILED"}
@@ -147,7 +148,7 @@ if FastMCP is not None:
 
     @mcp.tool(name="customers.email.send_all")
     def tool_customers_email_send_all(subject: str, body: str) -> dict:
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         token, source = get_access_token(api, svc)
         if not token:
             return {"ok": False, "status": "AUTH_FAILED"}
@@ -158,7 +159,7 @@ if FastMCP is not None:
 
     @mcp.tool(name="emails.list")
     def tool_emails_list(page_size: int = 100, query: str = "") -> dict:
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         token, source = get_access_token(api, svc)
         if not token:
             return {"ok": False, "status": "AUTH_FAILED"}
@@ -171,7 +172,7 @@ if FastMCP is not None:
 
     @mcp.tool(name="emails.verify_subject")
     def tool_emails_verify_subject(subject: str, customer_id: str = "", page_size: int = 200) -> dict:
-        _, api, svc = _cfg()
+        _, api, svc = _backoffice_cfg()
         token, source = get_access_token(api, svc)
         if not token:
             return {"ok": False, "status": "AUTH_FAILED"}
@@ -212,6 +213,35 @@ if FastMCP is not None:
             "matches": matches[:25],
             "auth_source": source,
         }
+
+
+    @mcp.tool(name="storefront.price_list.default")
+    def tool_storefront_price_list_default() -> dict:
+        """Fetch the default storefront price list (includes slug and metadata)."""
+        try:
+            token, _ = storefront.get_token()
+        except Exception as e:
+            return {"ok": False, "status": "STOREFRONT_AUTH_FAILED", "error": str(e)}
+        return storefront.price_list_default(token)
+
+    @mcp.tool(name="storefront.products")
+    def tool_storefront_products(price_list_id: str = "") -> dict:
+        """Fetch products for a storefront price list. If price_list_id is omitted, uses the default price list."""
+        try:
+            token, _ = storefront.get_token()
+        except Exception as e:
+            return {"ok": False, "status": "STOREFRONT_AUTH_FAILED", "error": str(e)}
+
+        price_list_id = price_list_id.strip()
+        if not price_list_id:
+            pl = storefront.price_list_default(token)
+            if not pl.get("ok"):
+                return {"ok": False, "status": "PRICE_LIST_FETCH_FAILED", "detail": pl}
+            price_list_id = (pl.get("data") or {}).get("id")
+            if not price_list_id:
+                return {"ok": False, "status": "NO_PRICE_LIST_ID", "detail": pl}
+
+        return storefront.products(token, price_list_id)
 
 
 def main() -> None:

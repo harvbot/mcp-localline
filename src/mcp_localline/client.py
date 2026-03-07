@@ -7,12 +7,14 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 
-def get_json(url: str, token: str | None = None, params: dict | None = None) -> dict:
+def get_json(url: str, token: str | None = None, params: dict | None = None, extra_headers: dict | None = None) -> dict:
     if params:
         url = f"{url}?{urlencode(params)}"
     headers = {"Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if extra_headers:
+        headers.update(extra_headers)
     req = Request(url=url, method="GET", headers=headers)
     try:
         with urlopen(req, timeout=60) as resp:
@@ -22,13 +24,15 @@ def get_json(url: str, token: str | None = None, params: dict | None = None) -> 
         return {"status_code": e.code, "ok": False, "url": url, "error": txt}
 
 
-def post_json(url: str, token: str | None, payload: dict, params: dict | None = None) -> dict:
+def post_json(url: str, token: str | None, payload: dict, params: dict | None = None, extra_headers: dict | None = None) -> dict:
     if params:
         url = f"{url}?{urlencode(params, doseq=True)}"
     body = json.dumps(payload).encode("utf-8")
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if extra_headers:
+        headers.update(extra_headers)
     req = Request(url=url, data=body, method="POST", headers=headers)
     try:
         with urlopen(req, timeout=60) as resp:

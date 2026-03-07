@@ -71,7 +71,7 @@ def _managed_vendor_ids(api: str, token: str) -> list[int]:
     return vendor_ids
 
 
-def _cfg() -> tuple[str, str, str]:
+def _backoffice_cfg() -> tuple[str, str, str]:
     site = os.getenv("LOCAL_LINE_BASE_URL", "https://cfc.localline.ca").rstrip("/")
     api = os.getenv("LOCAL_LINE_API_BASE", f"{site}/api/backoffice/v2").rstrip("/")
     keychain_service = os.getenv("LOCAL_LINE_KEYCHAIN_SERVICE", "mcp.localline")
@@ -80,13 +80,13 @@ def _cfg() -> tuple[str, str, str]:
 
 @app.command("auth-status")
 def auth_status_cmd() -> None:
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     print(json.dumps(auth_status(api, svc), indent=2))
 
 
 @app.command("auth-bootstrap")
 def auth_bootstrap_cmd() -> None:
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     try:
         out = bootstrap_and_store(api, svc)
     except Exception as e:
@@ -104,7 +104,7 @@ def picklists_create(
 ) -> None:
     _guard_current_week(start_date, end_date, enforce=not allow_outside_current_week)
 
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     token, source = get_access_token(api, svc)
     if not token:
         print(json.dumps({"ok": False, "status": "AUTH_FAILED", "fix": "Run mcp-localline auth-bootstrap with LOCALLINE_USERNAME/PASSWORD env vars"}, indent=2))
@@ -136,7 +136,7 @@ def picklists_create(
 
 @app.command("orders-export")
 def orders_export(start_date: str = typer.Option(...), end_date: str = typer.Option(...)) -> None:
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     token, source = get_access_token(api, svc)
     if not token:
         print(json.dumps({"ok": False, "status": "AUTH_FAILED", "fix": "Run mcp-localline auth-bootstrap with LOCALLINE_USERNAME/PASSWORD env vars"}, indent=2))
@@ -148,7 +148,7 @@ def orders_export(start_date: str = typer.Option(...), end_date: str = typer.Opt
 
 @app.command("customers-email-proof")
 def customers_email_proof(subject: str = typer.Option(...), body: str = typer.Option(...), customer_id: str = typer.Option("744150")) -> None:
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     token, source = get_access_token(api, svc)
     if not token:
         print(json.dumps({"ok": False, "status": "AUTH_FAILED"}, indent=2))
@@ -160,7 +160,7 @@ def customers_email_proof(subject: str = typer.Option(...), body: str = typer.Op
 
 @app.command("customers-email-send-all")
 def customers_email_send_all(subject: str = typer.Option(...), body: str = typer.Option(...)) -> None:
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     token, source = get_access_token(api, svc)
     if not token:
         print(json.dumps({"ok": False, "status": "AUTH_FAILED"}, indent=2))
@@ -170,9 +170,40 @@ def customers_email_send_all(subject: str = typer.Option(...), body: str = typer
     print(json.dumps(out, indent=2))
 
 
+@app.command("storefront-price-list")
+def storefront_price_list() -> None:
+    """Fetch the default storefront price list and its products (anonymous auth)."""
+    from . import storefront as sf
+
+    try:
+        token, subdomain = sf.get_token()
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": str(e), "auth_source": "storefront_anonymous"}, indent=2))
+        raise typer.Exit(code=2)
+
+    pl_result = sf.price_list_default(token)
+    if not pl_result.get("ok"):
+        print(json.dumps({"ok": False, "error": "price_list_default failed", "detail": pl_result, "auth_source": "storefront_anonymous"}, indent=2))
+        raise typer.Exit(code=2)
+
+    pl_data = pl_result.get("data") or {}
+    pl_id = pl_data.get("id")
+    if not pl_id:
+        print(json.dumps({"ok": False, "error": "no price_list id in response", "detail": pl_result, "auth_source": "storefront_anonymous"}, indent=2))
+        raise typer.Exit(code=2)
+
+    products_result = sf.products(token, pl_id)
+    print(json.dumps({
+        "ok": products_result.get("ok", False),
+        "auth_source": "storefront_anonymous",
+        "price_list": pl_data,
+        "products": products_result,
+    }, indent=2))
+
+
 @app.command("emails-list")
 def emails_list(page_size: int = typer.Option(100), query: str = typer.Option("")) -> None:
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     token, source = get_access_token(api, svc)
     if not token:
         print(json.dumps({"ok": False, "status": "AUTH_FAILED"}, indent=2))
@@ -191,7 +222,7 @@ def emails_verify_subject(
     customer_id: str = typer.Option("", help="Optional recipient/customer id filter"),
     page_size: int = typer.Option(200),
 ) -> None:
-    _, api, svc = _cfg()
+    _, api, svc = _backoffice_cfg()
     token, source = get_access_token(api, svc)
     if not token:
         print(json.dumps({"ok": False, "status": "AUTH_FAILED"}, indent=2))
